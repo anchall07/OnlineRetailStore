@@ -1,0 +1,207 @@
+// Online Store Database Server
+
+//CREATING NECESSARY TABLES
+
+create table product(
+	prodID int not null,
+	prodname varchar(30) not null,
+	price into not null,
+	category varchar(30) not null,
+	subcategory varchar(30) not null,
+	stock int not null,
+	primary key(prodID) 
+);
+
+create table prodspec(
+	prodID int not null,
+	size varchar(10) not null,
+	color varchar(10) not null,
+	primary key(prodID),
+	foreign key (prodID) references product(prodID)
+);
+
+create table customer(
+	custID int not null,
+	custname varchar(30) not null,
+	phonenum into not null,
+	address varchar(200) not null,
+	primary key(custID) 
+);
+
+create table wishlist(
+	listID int not null,
+	custID int not null,
+	primary key (listID),
+	foregn key (custID) references customer(custID)
+);
+
+create table wlist-item(
+	prodID int not null,
+	prodname varchar(30) not null,
+	price into not null,
+	category varchar(30) not null,
+	subcategory varchar(30) not null,
+	primary key(prodID) 
+);
+
+create table cart(
+	cartID int not null,
+	custID int not null,
+	total int not null,
+	primary key(cartID),
+	foreign key(custID) references customer(custID) 
+);
+
+create table cart-item(
+	cartID int not null,
+	itemID int not null,
+	itemprice int not null,
+	itemname varchar(30) not null,
+	status varchar(30) not null,
+	date_added varchar(30) not null,
+	primary key(cartID,itemID,date_added,status),
+	foreign key(cartID) reference cart(cartID),
+	foriegn key (itemID) references product(prodID),
+	foriegn key (itemprice) references product(prodprice),
+	foriegn key (itemname) references product(prodname)	
+);
+
+create table billing(
+	billID int not null,
+	cartID int not null,
+	custID into not null,
+	payment_mode varchar(10) not null,
+	date varchar(20)not null,
+	billtotal int not null,
+	primary key(billID),
+	foriegn key (cartID) references cart(cartID),
+	foriegn key (custID) references customer(custID),	
+);
+
+create table bill(
+	billID int not null,
+	bill_status varchar(10) not null,
+	primary key(billID),
+	foreign key(billID) refernces billing(billID)
+);
+
+// QUERIES FOR INSERTING INTO TABLES
+
+	//WILL ADD LATER
+
+///QUERIES
+
+//Calculating the total price present in the cart
+
+create or replace total_in_cart(id int)
+as$$
+declare
+	irow record;
+	total int default 0;
+	mrow record;
+
+begin
+	for irow in (select * from cart-item where cartID=id and cart-iten.status <>'purchased')
+		total = irow.itemprice*irow + total;	
+	end for;	
+	for mrow in (select * from cart where cart.cartID = id)
+		cart.toal =total;
+	end for;	
+$$end;language plpgsql;
+
+
+//PL/SQL Function
+
+//function that returns the product of a specific category, subcategory
+//sorted in descending order of price
+
+create or replace table search_results{
+	prodID int not null,
+	prodname varchar(30) not null,
+	price into not null,
+	category varchar(30) not null,
+	subcategory varchar(30) not null,
+	primary key(prodID) 
+};
+
+create or replace procedure list_prod_by_price(ctgry varchar,subctgry varchar, p int)
+as$$
+declare
+	prow record;
+	pcursor cursor;	
+begin
+	for prow in (select * from product where product.category =ctgry and product.subcategory = subctgry order by product.price ascending)	
+		if(prow.price<p)
+			INSERT INTO search_results VALUES (prow.prodID, prow.prodname,prow.price,prow.category,prow.category,prow.subcategory);
+		end if;	
+	end for;
+$$end;language plpgsql;
+
+
+//stored procedure before a product is deleted from the product table
+create table deleted_products{
+	prodID int not null,
+	prodname varchar(30) not null,
+	price into not null,
+	category varchar(30) not null,
+	subcategory varchar(30) not null,
+	date_deleted time not null,
+	primary key(prodID) 
+};
+
+create or replace delete_prod(id int)
+as$$
+declare
+	wrow record;
+begin
+	for prow in (select * from product where prodID =id)
+		insert into deleted_product values (prow.prodID, prow.prodname,prow.price,prwo.categpy,prow.subcategory,now());
+		delete * from wlist_item where wlist_item.prodID =prow.id;
+		delete *from cart_item where cart_item.prodID = prow.id;	
+	end for;
+	
+	delete * from product where product.prodID= id;
+$$end;language plpgsql;
+
+
+create or relace trigger deleting_product
+before delete 
+on product
+for each row
+execute delete_product();
+
+// trigger after purhase of an item
+create or replace table out_of_stock_item{
+	prodID int not null,
+	prodname varchar(30) not null,
+	price into not null,
+	category varchar(30) not null,
+	subcategory varchar(30) not null,
+	date_added time not null,
+	primary key(prodID) 
+};
+
+
+create or replace trigger updating_stock
+before insert 
+on bill
+for each row
+execute update_stock();
+
+
+
+create or replace update_stock(id int)
+as$$
+declare
+	prow record;
+begin
+	for prow in select * from product where prodID =id;
+		update from product set product.stock = prow.stock-1 where prodID = id;	
+		if prow.stock-1 <=0
+			delete_prod(id);
+			insert into out_of_stock_item values(prow.prodID,prow.prodname,prow.price,pro.category,prow.subcategoy,now();
+			
+		end if;
+		
+	end for;
+$$end;language plpgsql;
